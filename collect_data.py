@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 from arxiv_util import *
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Replace these with your own values
 api_id = os.getenv('TG_API_ID')
 api_hash = os.getenv('TG_API_HASH')

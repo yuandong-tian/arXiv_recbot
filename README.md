@@ -13,7 +13,7 @@ curl https://api.telegram.org/bot{your bot token}/getUpdates
 and look for chat ids. Save the chat id into `TELEGRAM_BOT_CHAT_ID` as another environment variable. 
 
 ## Get Telegram API KEY and PASS
-Please follow the instruction [here](https://core.telegram.org/api/obtaining_api_id) to get the telegram API ID and PASS, and store them into `TG_API_ID` and `TG_API_PASS` as environment variables. 
+Please follow the instruction [here](https://core.telegram.org/api/obtaining_api_id) to get the telegram API ID and PASS, and store them into `TG_API_ID` and `TG_API_HASH` as environment variables. 
 
 ## Install dependency  
 ```

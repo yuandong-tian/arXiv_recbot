@@ -4,3 +4,4 @@ scikit-learn
 pandas
 torch
 telethon
+python-dotenv

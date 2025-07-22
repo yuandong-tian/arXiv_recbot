@@ -9,6 +9,9 @@ import argparse
 import torch
 import sqlite3
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Define your keywords
 MAX_RESULTS = 100
 
