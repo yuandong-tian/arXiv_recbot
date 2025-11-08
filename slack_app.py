@@ -179,6 +179,9 @@ def handle_fetch_command(ack, command, respond, say, logger):
     
     # Fetch papers using core module
     papers_to_send = get_rated_papers(keywords, backdays)
+
+    import pdb
+    pdb.set_trace()
     
     # Send papers to Slack using say
     send_papers_to_slack(papers_to_send, say)
