@@ -166,7 +166,7 @@ def handle_fetch_command(ack, command, respond, say, logger):
         keywords = "reasoning,planning,preference,optimization,symbolic,grokking"
     
     # Get backdays from command text, default to 7
-    backdays = 7
+    backdays = 2
     try:
         parts = keywords.split()
         if len(parts) > 1:
@@ -193,6 +193,8 @@ def handle_app_mention(event, say, logger):
     # Call the /fetch command to fetch papers and send them to Slack
     # Extract the keywords and backdays from the mention
     keywords = event.get("text", "")
+    # remove the starting <@U09S250NVLH>
+    keywords = keywords.replace("<@U09S250NVLH>", "")
     handle_fetch_command(ack=None, command={"text": keywords}, respond=say, say=say, logger=logger)
 
 if __name__ == "__main__":
