@@ -157,15 +157,16 @@ def handle_get_command(ack, command, respond, logger):
 @app.command("/fetch")
 def handle_fetch_command(ack, command, respond, say, logger):
     """Handle /fetch command to fetch and send papers."""
-    ack()
+    if ack is not None:
+       ack()
     
     # Get keywords from command text, or use default
     keywords = command.get("text", "").strip()
     if not keywords:
         keywords = "reasoning,planning,preference,optimization,symbolic,grokking"
     
-    # Get backdays from command text, default to 2
-    backdays = 2
+    # Get backdays from command text, default to 7
+    backdays = 7
     try:
         parts = keywords.split()
         if len(parts) > 1:
