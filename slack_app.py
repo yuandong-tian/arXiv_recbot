@@ -186,17 +186,10 @@ def handle_fetch_command(ack, command, respond, say, logger):
 # Reply when someone mentions the bot
 @app.event("app_mention")
 def handle_app_mention(event, say, logger):
-    user = event["user"]
-    text = event.get("text", "")
-    logger.info(f"mention from {user}: {text}")
-    say(f"Hi <@{user}>! Use `/fetch` to get papers or `/get tag1 tag2` to search by tags.")
-
-
-@app.event("message")
-def handle_message_events(body, logger):
-    """Handle general message events."""
-    logger.info(body)
-
+    # Call the /fetch command to fetch papers and send them to Slack
+    # Extract the keywords and backdays from the mention
+    keywords = event.get("text", "")
+    handle_fetch_command(ack=None, command={"text": keywords}, respond=say, say=say, logger=logger)
 
 if __name__ == "__main__":
     SocketModeHandler(app, app_token).start()
