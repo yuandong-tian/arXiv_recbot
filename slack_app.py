@@ -174,7 +174,7 @@ def handle_fetch_command(ack, command, respond, say, logger):
         keywords = "reasoning,planning,preference,optimization,symbolic,grokking"
     
     # Get backdays from command text, default to 7
-    backdays = 2
+    backdays = 3
     try:
         parts = keywords.split()
         if len(parts) > 1:

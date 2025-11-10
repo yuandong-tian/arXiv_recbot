@@ -6,6 +6,7 @@ import os
 import sqlite3
 import torch
 import joblib
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Optional, Callable, Any
 from arxiv_util import get_arxiv_results, get_arxiv_message
@@ -19,9 +20,9 @@ MAX_RESULTS = 100
 loaded_model = None
 vectorizer = None
 
-# Database connection
-conn = None
-cursor = None
+# Thread-local database connections
+_thread_local = threading.local()
+_db_lock = threading.Lock()
 
 
 def initialize_model():
@@ -39,19 +40,28 @@ def initialize_model():
         vectorizer = None
 
 
+def get_db_connection():
+    """Get a thread-local database connection."""
+    if not hasattr(_thread_local, 'conn') or _thread_local.conn is None:
+        _thread_local.conn = sqlite3.connect(global_dataset_name, check_same_thread=False)
+        _thread_local.cursor = _thread_local.conn.cursor()
+        
+        # Create tables if they don't exist
+        # Updated to use paper_id (entry_id) instead of paper_message_id
+        with _db_lock:
+            _thread_local.cursor.execute('CREATE TABLE IF NOT EXISTS infos (id INTEGER PRIMARY KEY, paper_id TEXT, text TEXT)')
+            _thread_local.cursor.execute('CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, message_id INTEGER, paper_id TEXT, comment TEXT)')
+            # Updated preferences table: paper_id (entry_id), person_id (user_id), timestamp, preference
+            _thread_local.cursor.execute('CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY, paper_id TEXT, person_id TEXT, timestamp TEXT, preference INTEGER)')
+            _thread_local.conn.commit()
+    
+    return _thread_local.conn, _thread_local.cursor
+
+
 def initialize_database():
     """Initialize the database connection and create tables if they don't exist."""
-    global conn, cursor
-    conn = sqlite3.connect(global_dataset_name)
-    cursor = conn.cursor()
-    
-    # Create tables if they don't exist
-    # Updated to use paper_id (entry_id) instead of paper_message_id
-    cursor.execute('CREATE TABLE IF NOT EXISTS infos (id INTEGER PRIMARY KEY, paper_id TEXT, text TEXT)')
-    cursor.execute('CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, message_id INTEGER, paper_id TEXT, comment TEXT)')
-    # Updated preferences table: paper_id (entry_id), person_id (user_id), timestamp, preference
-    cursor.execute('CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY, paper_id TEXT, person_id TEXT, timestamp TEXT, preference INTEGER)')
-    conn.commit()
+    # Just ensure tables exist by getting a connection
+    get_db_connection()
 
 
 def get_rated_papers(keywords: str, backdays: int) -> List[Tuple[float, str, str]]:
@@ -118,8 +128,7 @@ def retrieve_papers_by_tag(tag: str) -> List[str]:
     Returns:
         List of paper text strings
     """
-    if cursor is None:
-        initialize_database()
+    conn, cursor = get_db_connection()
     
     # Retrieve the paper from the database that contains the tags
     cursor.execute('SELECT paper_id FROM comments WHERE comment LIKE ?', ('%' + tag + '%',))
@@ -147,8 +156,7 @@ def save_paper_info(entry_id: str, paper_text: str):
         entry_id: arXiv entry ID (paper_id)
         paper_text: Text content of the paper (without rating prefix)
     """
-    if cursor is None:
-        initialize_database()
+    conn, cursor = get_db_connection()
     
     # Remove the rating prefix if present (lines starting with "//")
     clean_text = paper_text
@@ -176,8 +184,7 @@ def save_feedback(feedback_type: str, entry_id: str, user_id: str):
         entry_id: arXiv entry ID (paper_id) - used to match feedback with papers
         user_id: User ID who provided the feedback (person_id)
     """
-    if cursor is None:
-        initialize_database()
+    conn, cursor = get_db_connection()
     
     # Map feedback_type to preference integer
     # rating1 -> 0, rating2 -> 1, ..., rating6 -> 5
