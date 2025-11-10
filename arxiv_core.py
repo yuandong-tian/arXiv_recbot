@@ -6,7 +6,7 @@ import os
 import sqlite3
 import torch
 import joblib
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Optional, Callable, Any
 from arxiv_util import get_arxiv_results, get_arxiv_message
 from preference_model import PreferenceModel
@@ -40,10 +40,18 @@ def initialize_model():
 
 
 def initialize_database():
-    """Initialize the database connection."""
+    """Initialize the database connection and create tables if they don't exist."""
     global conn, cursor
     conn = sqlite3.connect(global_dataset_name)
     cursor = conn.cursor()
+    
+    # Create tables if they don't exist
+    # Updated to use paper_id (entry_id) instead of paper_message_id
+    cursor.execute('CREATE TABLE IF NOT EXISTS infos (id INTEGER PRIMARY KEY, paper_id TEXT, text TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, message_id INTEGER, paper_id TEXT, comment TEXT)')
+    # Updated preferences table: paper_id (entry_id), person_id (user_id), timestamp, preference
+    cursor.execute('CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY, paper_id TEXT, person_id TEXT, timestamp TEXT, preference INTEGER)')
+    conn.commit()
 
 
 def get_rated_papers(keywords: str, backdays: int) -> List[Tuple[float, str, str]]:
@@ -59,7 +67,7 @@ def get_rated_papers(keywords: str, backdays: int) -> List[Tuple[float, str, str
     """
     results = get_arxiv_results(keywords.replace(",", " OR "), MAX_RESULTS)
     
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     yesterday = now - timedelta(days=backdays)
     
     papers_to_send = []
@@ -67,7 +75,7 @@ def get_rated_papers(keywords: str, backdays: int) -> List[Tuple[float, str, str
     for result in results:
         submitted_date = result.updated
         # Make the submitted date timezone-aware by assuming UTC
-        submitted_date = submitted_date.replace(tzinfo=UTC)
+        submitted_date = submitted_date.replace(tzinfo=timezone.utc)
         if submitted_date >= yesterday:
             message = get_arxiv_message(result)
             
@@ -114,21 +122,49 @@ def retrieve_papers_by_tag(tag: str) -> List[str]:
         initialize_database()
     
     # Retrieve the paper from the database that contains the tags
-    cursor.execute('SELECT paper_message_id FROM comments WHERE comment LIKE ?', ('%' + tag + '%',))
-    paper_message_ids = cursor.fetchall()
+    cursor.execute('SELECT paper_id FROM comments WHERE comment LIKE ?', ('%' + tag + '%',))
+    paper_ids = cursor.fetchall()
     
     # Get all papers that contain the tags and return
     papers = []
     
-    for paper_message_id_tuple in paper_message_ids:
-        paper_message_id = paper_message_id_tuple[0]
-        # Retrieve the paper from the database
-        cursor.execute('SELECT text FROM infos WHERE paper_message_id = ?', (paper_message_id,))
+    for paper_id_tuple in paper_ids:
+        paper_id = paper_id_tuple[0]
+        # Retrieve the paper from the database using paper_id (entry_id)
+        cursor.execute('SELECT text FROM infos WHERE paper_id = ?', (paper_id,))
         for paper in cursor.fetchall():
             # Convert the paper to a string
             papers.append(str(paper[0]))
     
     return papers
+
+
+def save_paper_info(entry_id: str, paper_text: str):
+    """
+    Save paper information to the database.
+    
+    Args:
+        entry_id: arXiv entry ID (paper_id)
+        paper_text: Text content of the paper (without rating prefix)
+    """
+    if cursor is None:
+        initialize_database()
+    
+    # Remove the rating prefix if present (lines starting with "//")
+    clean_text = paper_text
+    if paper_text.startswith("//"):
+        # Remove the first line which contains the rating
+        lines = paper_text.split("\n")
+        if len(lines) > 1:
+            clean_text = "\n".join(lines[1:])
+    
+    # Check if paper already exists using paper_id (entry_id)
+    cursor.execute('SELECT id FROM infos WHERE paper_id = ?', (entry_id,))
+    if cursor.fetchone() is None:
+        cursor.execute('INSERT INTO infos (paper_id, text) VALUES (?, ?)', (entry_id, clean_text))
+        conn.commit()
+        import logging
+        logging.info(f"Saved paper info: paper_id={entry_id}")
 
 
 def save_feedback(feedback_type: str, entry_id: str, user_id: str):
@@ -137,15 +173,40 @@ def save_feedback(feedback_type: str, entry_id: str, user_id: str):
     
     Args:
         feedback_type: Type of feedback (e.g., "rating1", "rating2", etc.)
-        entry_id: arXiv entry ID
-        user_id: User ID who provided the feedback
+        entry_id: arXiv entry ID (paper_id) - used to match feedback with papers
+        user_id: User ID who provided the feedback (person_id)
     """
     if cursor is None:
         initialize_database()
     
-    # Log the feedback (you can extend this to save to database)
+    # Map feedback_type to preference integer
+    # rating1 -> 0, rating2 -> 1, ..., rating6 -> 5
+    label2class = {f"rating{i+1}": i for i in range(6)}
+    label2class.update({
+        "not": 0,
+        "thumb": 4,
+        "love": 5,
+    })
+    
+    preference = label2class.get(feedback_type, None)
+    
+    if preference is None:
+        import logging
+        logging.warning(f"Unknown feedback type: {feedback_type}")
+        return
+    
+    # Get current timestamp
+    timestamp = datetime.now(timezone.utc).isoformat()
+    
+    # Save preference to database with paper_id (entry_id), person_id (user_id), timestamp, and preference
+    cursor.execute(
+        'INSERT INTO preferences (paper_id, person_id, timestamp, preference) VALUES (?, ?, ?, ?)',
+        (entry_id, user_id, timestamp, preference)
+    )
+    conn.commit()
+    
     import logging
-    logging.info(f"Received feedback: {feedback_type} for paper {entry_id} from user {user_id}")
+    logging.info(f"Saved feedback: feedback_type={feedback_type}, preference={preference}, paper_id={entry_id}, person_id={user_id}, timestamp={timestamp}")
 
 
 # Initialize on import

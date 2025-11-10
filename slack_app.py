@@ -7,7 +7,8 @@ from slack_sdk.errors import SlackApiError
 from arxiv_core import (
     get_rated_papers,
     retrieve_papers_by_tag,
-    save_feedback
+    save_feedback,
+    save_paper_info
 )
 
 # Tokens from your Slack app config
@@ -83,8 +84,9 @@ def send_papers_to_slack(papers_to_send, say):
         ]
         
         try:
+            # Use say() - paper info will be saved when feedback is received
             say(blocks=blocks, text=message)
-        except SlackApiError as e:
+        except Exception as e:
             logger.error(f"Error sending message: {e}")
 
 
@@ -97,7 +99,13 @@ def handle_feedback(ack, body, logger):
     feedback_type, entry_id = value.split('_', 1)
     user_id = body["user"]["id"]
     
-    # Save feedback using core module
+    # Get paper text from the message (in case paper info wasn't saved when sending)
+    paper_text = body["message"].get("text", "")
+    
+    # Save paper info if not already saved (using entry_id from the button value)
+    save_paper_info(entry_id, paper_text)
+    
+    # Save feedback using core module (paper_id=entry_id, person_id=user_id, timestamp is auto-generated)
     save_feedback(feedback_type, entry_id, user_id)
     
     # Update the message to remove buttons
@@ -179,7 +187,7 @@ def handle_fetch_command(ack, command, respond, say, logger):
     
     # Fetch papers using core module
     papers_to_send = get_rated_papers(keywords, backdays)
-
+    
     # Send papers to Slack using say
     send_papers_to_slack(papers_to_send, say)
 

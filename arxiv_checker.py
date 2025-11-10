@@ -10,6 +10,7 @@ from arxiv_core import (
     get_rated_papers,
     retrieve_papers_by_tag,
     save_feedback,
+    save_paper_info,
     MAX_RESULTS
 )
 
@@ -44,12 +45,14 @@ async def fetch_and_send_papers(keywords, backdays, context: ContextTypes.DEFAUL
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         try:
-            await context.bot.send_message(
+            sent_message = await context.bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID, 
                 text=message, 
                 parse_mode="Markdown", 
                 reply_markup=reply_markup
             )
+            # Save paper info to database using paper_id (entry_id)
+            save_paper_info(entry_id, message)
         except Exception as e:
             logging.error(f"Error sending message: {e}")
 
@@ -62,7 +65,7 @@ async def feedback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     feedback_data = query.data
     feedback_type, entry_id = feedback_data.split('_', 1)
     
-    # Save feedback using core module
+    # Save feedback using core module (paper_id=entry_id, person_id=user_id, timestamp is auto-generated)
     save_feedback(feedback_type, entry_id, str(update.effective_user.id))
     
     await query.edit_message_reply_markup(reply_markup=None)
