@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk.errors import SlackApiError
@@ -198,8 +199,10 @@ def handle_app_mention(event, say, logger):
     # Call the /fetch command to fetch papers and send them to Slack
     # Extract the keywords and backdays from the mention
     keywords = event.get("text", "")
-    # remove the starting <@U09S250NVLH>
-    keywords = keywords.replace("<@U09S250NVLH>", "")
+    # remove the starting user reference in the format of <@...>
+    user_reference = re.search(r"<@(\w+)>", keywords)
+    if user_reference:
+        keywords = keywords.replace(user_reference.group(0), "")
     handle_fetch_command(ack=None, command={"text": keywords}, respond=say, say=say, logger=logger)
 
 if __name__ == "__main__":
